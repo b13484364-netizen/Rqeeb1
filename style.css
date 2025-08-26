@@ -1,0 +1,11 @@
+body{font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; background:#f7f7fb; color:#111}
+.container{max-width:980px;margin:28px auto;padding:18px;background:#fff;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,0.06)}
+.uploader{display:flex;gap:12px;margin-bottom:12px}
+.uploader label{display:flex;flex-direction:column;font-size:14px}
+.controls{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+#canvasOverlay{width:100%;border:1px solid #ddd;display:block}
+.summary{font-weight:600;margin-bottom:8px}
+#details{margin-top:8px;font-size:13px;color:#444}
+#status{font-size:13px;color:#666}
+button{padding:8px 12px;border-radius:8px;border:0;background:#2563eb;color:#fff;cursor:pointer}
+button:disabled{opacity:0.6}

@@ -1,0 +1,1546 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>كاشف المستندات المزورة - تحليل الصور المتقدم</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://kit.fontawesome.com/4b9ba14b0f.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#5D5CDE'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .upload-area {
+            border: 2px dashed #d1d5db;
+            transition: all 0.3s ease;
+        }
+        .upload-area:hover {
+            border-color: #5D5CDE;
+            background-color: rgba(93, 92, 222, 0.05);
+        }
+        .upload-area.dragover {
+            border-color: #5D5CDE;
+            background-color: rgba(93, 92, 222, 0.1);
+        }
+        .analysis-card {
+            background: linear-gradient(135deg, rgba(93, 92, 222, 0.1) 0%, rgba(147, 51, 234, 0.1) 100%);
+            border: 1px solid rgba(93, 92, 222, 0.2);
+        }
+        .progress-container {
+            background: linear-gradient(90deg, #5D5CDE 0%, #9333EA 100%);
+        }
+        .result-excellent { background: linear-gradient(135deg, #10B981 0%, #059669 100%); }
+        .result-good { background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); }
+        .result-poor { background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%); }
+        .metric-card {
+            transition: all 0.3s ease;
+            border: 1px solid rgba(93, 92, 222, 0.1);
+        }
+        .metric-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(93, 92, 222, 0.15);
+        }
+        .comparison-images {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        .image-preview {
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+        }
+        .image-preview img {
+            width: 100%;
+            height: auto;
+            display: block;
+            max-height: 300px;
+            object-fit: contain;
+        }
+        .image-label {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 0.5rem;
+            text-align: center;
+            font-size: 0.875rem;
+        }
+        .mode-tab {
+            transition: all 0.3s ease;
+        }
+        .mode-tab.active {
+            background: linear-gradient(135deg, #5D5CDE 0%, #9333EA 100%);
+            color: white;
+        }
+        .ai-analysis {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.1) 100%);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+        @media (max-width: 768px) {
+            .comparison-images {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-7xl">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold mb-2 bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+                <i class="fas fa-shield-alt mr-3"></i>
+                كاشف المستندات والعملات المزورة
+            </h1>
+            <p class="text-gray-600 dark:text-gray-400 text-lg">
+                تحليل متطور للكشف عن التزوير باستخدام الذكاء الاصطناعي والخوارزميات المتقدمة
+            </p>
+        </div>
+
+        <!-- Analysis Mode Selector -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-8">
+            <h2 class="text-xl font-bold mb-4 flex items-center">
+                <i class="fas fa-cogs mr-3 text-primary"></i>
+                اختر نوع التحليل
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <button id="singleImageMode" class="mode-tab active p-4 rounded-lg border-2 border-gray-200 dark:border-gray-700 text-center hover:border-primary transition-all">
+                    <i class="fas fa-image text-2xl mb-2 block"></i>
+                    <div class="font-medium">صورة واحدة</div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">تقسيم وتحليل مناطق مختلفة</div>
+                </button>
+                <button id="compareImagesMode" class="mode-tab p-4 rounded-lg border-2 border-gray-200 dark:border-gray-700 text-center hover:border-primary transition-all">
+                    <i class="fas fa-images text-2xl mb-2 block"></i>
+                    <div class="font-medium">مقارنة صورتين</div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">مقارنة المستند الأصلي مع المشكوك فيه</div>
+                </button>
+                <button id="aiAnalysisMode" class="mode-tab p-4 rounded-lg border-2 border-gray-200 dark:border-gray-700 text-center hover:border-primary transition-all">
+                    <i class="fas fa-robot text-2xl mb-2 block"></i>
+                    <div class="font-medium">تحليل الذكاء الاصطناعي</div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">تحليل شامل بواسطة الذكاء الاصطناعي</div>
+                </button>
+            </div>
+        </div>
+
+        <!-- Upload Section -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-8">
+            <h2 class="text-2xl font-bold mb-4 flex items-center">
+                <i class="fas fa-upload mr-3 text-primary"></i>
+                رفع الصور للتحليل
+            </h2>
+            
+            <!-- Single Image Upload -->
+            <div id="singleUpload" class="upload-section">
+                <div id="uploadArea" class="upload-area rounded-lg p-8 text-center cursor-pointer bg-gray-50 dark:bg-gray-700">
+                    <div id="uploadContent">
+                        <i class="fas fa-cloud-upload-alt text-4xl text-gray-400 mb-4"></i>
+                        <p class="text-lg font-medium text-gray-600 dark:text-gray-300 mb-2">
+                            اسحب الصورة هنا أو انقر للاختيار
+                        </p>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                            يدعم: JPG, PNG, GIF (حتى 10 ميجابايت)
+                        </p>
+                        <input type="file" id="imageFile" accept="image/*" class="hidden">
+                    </div>
+                    <div id="imagePreview" class="hidden">
+                        <img id="previewImg" class="max-w-full h-64 object-contain mx-auto rounded-lg">
+                        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">الصورة جاهزة للتحليل</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dual Image Upload -->
+            <div id="dualUpload" class="upload-section hidden">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div id="uploadArea1" class="upload-area rounded-lg p-6 text-center cursor-pointer bg-gray-50 dark:bg-gray-700">
+                        <div id="uploadContent1">
+                            <i class="fas fa-file-alt text-3xl text-gray-400 mb-3"></i>
+                            <p class="font-medium text-gray-600 dark:text-gray-300 mb-2">الصورة الأصلية</p>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">انقر لاختيار الصورة المرجعية</p>
+                            <input type="file" id="originalFile" accept="image/*" class="hidden">
+                        </div>
+                        <div id="originalPreview" class="hidden">
+                            <img id="originalImg" class="max-w-full h-48 object-contain mx-auto rounded-lg">
+                            <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">الصورة الأصلية</p>
+                        </div>
+                    </div>
+                    <div id="uploadArea2" class="upload-area rounded-lg p-6 text-center cursor-pointer bg-gray-50 dark:bg-gray-700">
+                        <div id="uploadContent2">
+                            <i class="fas fa-question-circle text-3xl text-gray-400 mb-3"></i>
+                            <p class="font-medium text-gray-600 dark:text-gray-300 mb-2">الصورة المشكوك فيها</p>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">انقر لاختيار الصورة للفحص</p>
+                            <input type="file" id="suspectFile" accept="image/*" class="hidden">
+                        </div>
+                        <div id="suspectPreview" class="hidden">
+                            <img id="suspectImg" class="max-w-full h-48 object-contain mx-auto rounded-lg">
+                            <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">الصورة المشكوك فيها</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analysis Options -->
+            <div class="mt-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <h3 class="font-bold mb-3 flex items-center">
+                    <i class="fas fa-sliders-h mr-2"></i>
+                    خيارات التحليل
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <label class="flex items-center">
+                        <input type="radio" name="analysisSpeed" value="fast" checked class="ml-2">
+                        <span>تحليل سريع (30 ثانية)</span>
+                    </label>
+                    <label class="flex items-center">
+                        <input type="radio" name="analysisSpeed" value="balanced" class="ml-2">
+                        <span>تحليل متوازن (60 ثانية)</span>
+                    </label>
+                    <label class="flex items-center">
+                        <input type="radio" name="analysisSpeed" value="thorough" class="ml-2">
+                        <span>تحليل شامل (90 ثانية)</span>
+                    </label>
+                </div>
+                <div class="mt-3">
+                    <label class="flex items-center">
+                        <input type="checkbox" id="includeAI" checked class="ml-2">
+                        <span>تضمين تحليل الذكاء الاصطناعي</span>
+                    </label>
+                </div>
+            </div>
+
+            <button id="analyzeBtn" class="w-full mt-4 bg-gradient-to-r from-primary to-purple-600 text-white font-bold py-3 px-6 rounded-lg hover:shadow-lg transform hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                <i class="fas fa-search mr-2"></i>
+                بدء التحليل المتقدم
+            </button>
+        </div>
+
+        <!-- Progress Section -->
+        <div id="progressSection" class="hidden bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-8">
+            <h3 class="text-xl font-bold mb-4 flex items-center">
+                <i class="fas fa-cog fa-spin mr-3 text-primary"></i>
+                جاري التحليل...
+            </h3>
+            <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4 mb-4">
+                <div id="progressBar" class="progress-container h-4 rounded-full transition-all duration-500" style="width: 0%"></div>
+            </div>
+            <p id="progressText" class="text-center text-gray-600 dark:text-gray-400 font-medium">0% - جاري التحضير...</p>
+            
+            <!-- Live AI Analysis Display -->
+            <div id="liveAIAnalysis" class="hidden mt-6 ai-analysis rounded-lg p-4">
+                <h4 class="font-bold text-green-800 dark:text-green-200 mb-3 flex items-center">
+                    <i class="fas fa-robot mr-2"></i>
+                    تحليل الذكاء الاصطناعي المباشر
+                </h4>
+                <div id="aiAnalysisContent" class="text-green-700 dark:text-green-300 text-sm whitespace-pre-wrap"></div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="resultSection" class="hidden">
+            <!-- Overall Score -->
+            <div id="overallScore" class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-8">
+                <h2 class="text-2xl font-bold mb-4 flex items-center">
+                    <i class="fas fa-chart-line mr-3 text-primary"></i>
+                    النتيجة الإجمالية
+                </h2>
+                <div id="scoreDisplay" class="text-center p-6 rounded-lg text-white font-bold text-3xl">
+                    <!-- Score will be inserted here -->
+                </div>
+                <div id="scoreInterpretation" class="mt-4 p-4 rounded-lg">
+                    <!-- Interpretation will be inserted here -->
+                </div>
+            </div>
+
+            <!-- AI Analysis Results -->
+            <div id="aiResultsSection" class="hidden bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-8">
+                <h2 class="text-2xl font-bold mb-4 flex items-center">
+                    <i class="fas fa-robot mr-3 text-green-600"></i>
+                    تحليل الذكاء الاصطناعي المفصل
+                </h2>
+                <div id="aiAnalysisResults" class="prose dark:prose-invert max-w-none">
+                    <!-- AI analysis will be inserted here -->
+                </div>
+            </div>
+
+            <!-- Detailed Analysis -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-8">
+                <h2 class="text-2xl font-bold mb-6 flex items-center">
+                    <i class="fas fa-microscope mr-3 text-primary"></i>
+                    تحليل مفصل للمقاييس
+                </h2>
+                <div id="detailedMetrics" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <!-- Metrics will be inserted here -->
+                </div>
+            </div>
+
+            <!-- Visual Comparison -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                <h2 class="text-2xl font-bold mb-6 flex items-center">
+                    <i class="fas fa-eye mr-3 text-primary"></i>
+                    المقارنة البصرية والفروقات
+                </h2>
+                <div id="visualComparison">
+                    <!-- Visual comparison will be inserted here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Dark mode handling
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.documentElement.classList.add('dark');
+        }
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
+            if (event.matches) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        });
+
+        // Global variables
+        let currentMode = 'single';
+        let analysisData = {};
+
+        // Mode switching
+        const modeTabs = document.querySelectorAll('.mode-tab');
+        const singleUpload = document.getElementById('singleUpload');
+        const dualUpload = document.getElementById('dualUpload');
+
+        modeTabs.forEach((tab, index) => {
+            tab.addEventListener('click', () => {
+                modeTabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                
+                singleUpload.classList.add('hidden');
+                dualUpload.classList.add('hidden');
+                
+                if (index === 0) {
+                    currentMode = 'single';
+                    singleUpload.classList.remove('hidden');
+                } else if (index === 1) {
+                    currentMode = 'compare';
+                    dualUpload.classList.remove('hidden');
+                } else {
+                    currentMode = 'ai';
+                    singleUpload.classList.remove('hidden');
+                }
+                
+                updateAnalyzeButton();
+            });
+        });
+
+        // Upload handling for single image mode
+        const uploadArea = document.getElementById('uploadArea');
+        const imageFile = document.getElementById('imageFile');
+        const uploadContent = document.getElementById('uploadContent');
+        const imagePreview = document.getElementById('imagePreview');
+        const previewImg = document.getElementById('previewImg');
+
+        uploadArea.addEventListener('click', () => imageFile.click());
+        setupDragAndDrop(uploadArea, handleFileSelect);
+        imageFile.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileSelect(e.target.files[0]);
+            }
+        });
+
+        // Upload handling for dual image mode
+        const uploadArea1 = document.getElementById('uploadArea1');
+        const uploadArea2 = document.getElementById('uploadArea2');
+        const originalFile = document.getElementById('originalFile');
+        const suspectFile = document.getElementById('suspectFile');
+
+        uploadArea1.addEventListener('click', () => originalFile.click());
+        uploadArea2.addEventListener('click', () => suspectFile.click());
+        
+        setupDragAndDrop(uploadArea1, (file) => handleDualFileSelect(file, 'original'));
+        setupDragAndDrop(uploadArea2, (file) => handleDualFileSelect(file, 'suspect'));
+        
+        originalFile.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleDualFileSelect(e.target.files[0], 'original');
+            }
+        });
+        
+        suspectFile.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleDualFileSelect(e.target.files[0], 'suspect');
+            }
+        });
+
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        analyzeBtn.addEventListener('click', startAnalysis);
+
+        function setupDragAndDrop(area, handler) {
+            area.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                area.classList.add('dragover');
+            });
+            area.addEventListener('dragleave', () => {
+                area.classList.remove('dragover');
+            });
+            area.addEventListener('drop', (e) => {
+                e.preventDefault();
+                area.classList.remove('dragover');
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    handler(files[0]);
+                }
+            });
+        }
+
+        function handleFileSelect(file) {
+            if (!validateFile(file)) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                previewImg.src = e.target.result;
+                uploadContent.classList.add('hidden');
+                imagePreview.classList.remove('hidden');
+                analysisData.singleImage = file;
+                updateAnalyzeButton();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function handleDualFileSelect(file, type) {
+            if (!validateFile(file)) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                if (type === 'original') {
+                    document.getElementById('originalImg').src = e.target.result;
+                    document.getElementById('uploadContent1').classList.add('hidden');
+                    document.getElementById('originalPreview').classList.remove('hidden');
+                    analysisData.originalImage = file;
+                } else {
+                    document.getElementById('suspectImg').src = e.target.result;
+                    document.getElementById('uploadContent2').classList.add('hidden');
+                    document.getElementById('suspectPreview').classList.remove('hidden');
+                    analysisData.suspectImage = file;
+                }
+                updateAnalyzeButton();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function validateFile(file) {
+            if (!file.type.startsWith('image/')) {
+                showCustomAlert('يرجى اختيار ملف صورة صحيح');
+                return false;
+            }
+
+            if (file.size > 10 * 1024 * 1024) {
+                showCustomAlert('حجم الملف كبير جداً (حد أقصى 10 ميجابايت)');
+                return false;
+            }
+
+            return true;
+        }
+
+        function updateAnalyzeButton() {
+            let canAnalyze = false;
+            
+            if (currentMode === 'single' || currentMode === 'ai') {
+                canAnalyze = analysisData.singleImage;
+            } else if (currentMode === 'compare') {
+                canAnalyze = analysisData.originalImage && analysisData.suspectImage;
+            }
+            
+            analyzeBtn.disabled = !canAnalyze;
+        }
+
+        async function startAnalysis() {
+            const analysisSpeed = document.querySelector('input[name="analysisSpeed"]:checked').value;
+            const includeAI = document.getElementById('includeAI').checked;
+
+            // Show progress section
+            document.getElementById('progressSection').classList.remove('hidden');
+            document.getElementById('resultSection').classList.add('hidden');
+            
+            try {
+                if (currentMode === 'single') {
+                    await performSingleImageAnalysis(analysisSpeed, includeAI);
+                } else if (currentMode === 'compare') {
+                    await performDualImageAnalysis(analysisSpeed, includeAI);
+                } else if (currentMode === 'ai') {
+                    await performAIOnlyAnalysis();
+                }
+            } catch (error) {
+                console.error('Error during analysis:', error);
+                showCustomAlert('حدث خطأ أثناء التحليل: ' + error.message);
+            }
+        }
+
+        async function performSingleImageAnalysis(speed, includeAI) {
+            updateProgress(10, 'جاري تحميل الصورة...');
+            const imageCanvas = await loadImageToCanvas(analysisData.singleImage);
+
+            updateProgress(20, 'استخراج مناطق للتحليل...');
+            const regions = smartRegionExtraction(imageCanvas);
+            
+            updateProgress(30, 'تطبيق خوارزميات التحليل المحسنة...');
+            const localResults = await performOptimizedAnalysis(regions, speed);
+
+            if (includeAI) {
+                updateProgress(60, 'بدء تحليل الذكاء الاصطناعي...');
+                const aiResults = await performAIAnalysis(analysisData.singleImage);
+                localResults.aiAnalysis = aiResults;
+            }
+
+            updateProgress(90, 'إنشاء النتائج النهائية...');
+            const finalResults = combineResults(localResults, speed);
+            
+            updateProgress(100, `تم الانتهاء - النتيجة: ${finalResults.score.toFixed(1)}%`);
+            
+            setTimeout(() => {
+                displayResults(finalResults);
+            }, 1000);
+        }
+
+        async function performDualImageAnalysis(speed, includeAI) {
+            updateProgress(10, 'جاري تحميل الصور...');
+            const originalCanvas = await loadImageToCanvas(analysisData.originalImage);
+            const suspectCanvas = await loadImageToCanvas(analysisData.suspectImage);
+
+            updateProgress(30, 'مقارنة الصور المحسنة...');
+            const localResults = await performAdvancedComparison(originalCanvas, suspectCanvas, speed);
+
+            if (includeAI) {
+                updateProgress(60, 'تحليل الذكاء الاصطناعي للمقارنة...');
+                const aiResults = await performAIComparison(analysisData.originalImage, analysisData.suspectImage);
+                localResults.aiAnalysis = aiResults;
+            }
+
+            updateProgress(90, 'إنشاء النتائج النهائية...');
+            const finalResults = combineResults(localResults, speed);
+            
+            updateProgress(100, `تم الانتهاء - النتيجة: ${finalResults.score.toFixed(1)}%`);
+            
+            setTimeout(() => {
+                displayResults(finalResults);
+            }, 1000);
+        }
+
+        async function performAIOnlyAnalysis() {
+            updateProgress(20, 'بدء التحليل بالذكاء الاصطناعي...');
+            const aiResults = await performAIAnalysis(analysisData.singleImage, true);
+            
+            updateProgress(100, 'تم الانتهاء من التحليل');
+            
+            setTimeout(() => {
+                displayResults({ 
+                    score: aiResults.score || 75, 
+                    aiAnalysis: aiResults,
+                    metrics: {},
+                    images: {},
+                    mode: 'ai-only'
+                });
+            }, 1000);
+        }
+
+        function smartRegionExtraction(canvas) {
+            // Enhanced region extraction with multiple strategies
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // Strategy 1: Traditional left-right split
+            const leftRight = splitCanvas(canvas);
+            
+            // Strategy 2: Top-bottom split for documents
+            const topBottom = splitCanvasVertically(canvas);
+            
+            // Strategy 3: Center vs edges for currency/stamps
+            const centerEdges = extractCenterAndEdges(canvas);
+            
+            return {
+                leftRight: leftRight,
+                topBottom: topBottom,
+                centerEdges: centerEdges,
+                full: canvas
+            };
+        }
+
+        function splitCanvasVertically(canvas) {
+            const width = canvas.width;
+            const height = canvas.height;
+            const halfHeight = Math.floor(height / 2);
+
+            const topCanvas = document.createElement('canvas');
+            const bottomCanvas = document.createElement('canvas');
+            
+            topCanvas.width = width;
+            topCanvas.height = halfHeight;
+            bottomCanvas.width = width;
+            bottomCanvas.height = halfHeight;
+
+            const topCtx = topCanvas.getContext('2d');
+            const bottomCtx = bottomCanvas.getContext('2d');
+
+            topCtx.drawImage(canvas, 0, 0, width, halfHeight, 0, 0, width, halfHeight);
+            bottomCtx.drawImage(canvas, 0, halfHeight, width, halfHeight, 0, 0, width, halfHeight);
+
+            return [topCanvas, bottomCanvas];
+        }
+
+        function extractCenterAndEdges(canvas) {
+            const width = canvas.width;
+            const height = canvas.height;
+            const centerSize = Math.min(width, height) * 0.6;
+            const centerX = (width - centerSize) / 2;
+            const centerY = (height - centerSize) / 2;
+
+            const centerCanvas = document.createElement('canvas');
+            const edgeCanvas = document.createElement('canvas');
+            
+            centerCanvas.width = centerSize;
+            centerCanvas.height = centerSize;
+            edgeCanvas.width = width;
+            edgeCanvas.height = height;
+
+            const centerCtx = centerCanvas.getContext('2d');
+            const edgeCtx = edgeCanvas.getContext('2d');
+
+            // Extract center
+            centerCtx.drawImage(canvas, centerX, centerY, centerSize, centerSize, 0, 0, centerSize, centerSize);
+            
+            // Create edge mask (full image minus center)
+            edgeCtx.drawImage(canvas, 0, 0);
+            edgeCtx.globalCompositeOperation = 'destination-out';
+            edgeCtx.fillRect(centerX, centerY, centerSize, centerSize);
+
+            return [centerCanvas, edgeCanvas];
+        }
+
+        async function performOptimizedAnalysis(regions, speed) {
+            const analysisLevel = {
+                fast: { regions: ['leftRight'], metrics: ['texture', 'color', 'pixel'] },
+                balanced: { regions: ['leftRight', 'topBottom'], metrics: ['texture', 'frequency', 'color', 'edge', 'pixel'] },
+                thorough: { regions: ['leftRight', 'topBottom', 'centerEdges'], metrics: ['texture', 'frequency', 'color', 'noise', 'edge', 'pixel', 'gradient'] }
+            };
+
+            const config = analysisLevel[speed];
+            const results = { metrics: {}, images: {} };
+
+            for (const regionType of config.regions) {
+                const [region1, region2] = regions[regionType];
+                const gray1 = convertToGrayscale(region1);
+                const gray2 = convertToGrayscale(region2);
+
+                for (const metric of config.metrics) {
+                    if (!results.metrics[metric]) {
+                        results.metrics[metric] = [];
+                    }
+
+                    let score;
+                    switch (metric) {
+                        case 'texture':
+                            score = analyzeEnhancedTexture(gray1, gray2);
+                            break;
+                        case 'frequency':
+                            score = analyzeFrequency(gray1, gray2);
+                            break;
+                        case 'color':
+                            score = analyzeColorSimilarity(region1, region2);
+                            break;
+                        case 'noise':
+                            score = analyzeNoise(gray1, gray2);
+                            break;
+                        case 'edge':
+                            score = analyzeEdgeConsistency(gray1, gray2);
+                            break;
+                        case 'pixel':
+                            score = Math.max(0, 100 - (simplePixelDiff(gray1, gray2) / 50) * 100);
+                            break;
+                        case 'gradient':
+                            score = analyzeGradientConsistency(gray1, gray2);
+                            break;
+                    }
+                    
+                    results.metrics[metric].push(score);
+                }
+
+                // Generate comparison images for primary region
+                if (regionType === 'leftRight') {
+                    results.images.original = region1.toDataURL();
+                    results.images.suspect = region2.toDataURL();
+                    results.images.diff = createDiffImage(gray1, gray2);
+                    results.images.heatmap = createHeatmap(gray1, gray2);
+                }
+            }
+
+            // Average the metrics
+            Object.keys(results.metrics).forEach(key => {
+                const values = results.metrics[key];
+                results.metrics[key] = values.reduce((a, b) => a + b, 0) / values.length;
+            });
+
+            return results;
+        }
+
+        async function performAdvancedComparison(canvas1, canvas2, speed) {
+            // Resize canvases to same dimensions for fair comparison
+            const [resized1, resized2] = resizeToMatch(canvas1, canvas2);
+            
+            const gray1 = convertToGrayscale(resized1);
+            const gray2 = convertToGrayscale(resized2);
+
+            const results = { metrics: {}, images: {} };
+
+            const analysisLevel = {
+                fast: ['texture', 'color', 'pixel'],
+                balanced: ['texture', 'frequency', 'color', 'edge', 'pixel'],
+                thorough: ['texture', 'frequency', 'color', 'noise', 'edge', 'pixel', 'gradient', 'structure']
+            };
+
+            const metrics = analysisLevel[speed];
+
+            for (const metric of metrics) {
+                let score;
+                switch (metric) {
+                    case 'texture':
+                        score = analyzeEnhancedTexture(gray1, gray2);
+                        break;
+                    case 'frequency':
+                        score = analyzeFrequency(gray1, gray2);
+                        break;
+                    case 'color':
+                        score = analyzeColorSimilarity(resized1, resized2);
+                        break;
+                    case 'noise':
+                        score = analyzeNoise(gray1, gray2);
+                        break;
+                    case 'edge':
+                        score = analyzeEdgeConsistency(gray1, gray2);
+                        break;
+                    case 'pixel':
+                        score = Math.max(0, 100 - (simplePixelDiff(gray1, gray2) / 50) * 100);
+                        break;
+                    case 'gradient':
+                        score = analyzeGradientConsistency(gray1, gray2);
+                        break;
+                    case 'structure':
+                        score = analyzeStructuralSimilarity(gray1, gray2);
+                        break;
+                }
+                
+                results.metrics[metric] = score;
+            }
+
+            results.images = {
+                original: resized1.toDataURL(),
+                suspect: resized2.toDataURL(),
+                diff: createDiffImage(gray1, gray2),
+                heatmap: createHeatmap(gray1, gray2)
+            };
+
+            return results;
+        }
+
+        function resizeToMatch(canvas1, canvas2) {
+            const targetWidth = Math.min(canvas1.width, canvas2.width);
+            const targetHeight = Math.min(canvas1.height, canvas2.height);
+
+            const resized1 = document.createElement('canvas');
+            const resized2 = document.createElement('canvas');
+            
+            resized1.width = targetWidth;
+            resized1.height = targetHeight;
+            resized2.width = targetWidth;
+            resized2.height = targetHeight;
+
+            const ctx1 = resized1.getContext('2d');
+            const ctx2 = resized2.getContext('2d');
+
+            ctx1.drawImage(canvas1, 0, 0, targetWidth, targetHeight);
+            ctx2.drawImage(canvas2, 0, 0, targetWidth, targetHeight);
+
+            return [resized1, resized2];
+        }
+
+        function analyzeEnhancedTexture(canvas1, canvas2) {
+            // Enhanced texture analysis with multiple orientations
+            const data1 = canvas1.getContext('2d').getImageData(0, 0, canvas1.width, canvas1.height).data;
+            const data2 = canvas2.getContext('2d').getImageData(0, 0, canvas2.width, canvas2.height).data;
+
+            let totalSimilarity = 0;
+            const directions = [
+                { dx: 1, dy: 0 },   // Horizontal
+                { dx: 0, dy: 1 },   // Vertical
+                { dx: 1, dy: 1 },   // Diagonal
+                { dx: 1, dy: -1 }   // Anti-diagonal
+            ];
+
+            for (const dir of directions) {
+                let similarity = analyzeDirectionalTexture(data1, data2, canvas1.width, canvas1.height, dir);
+                totalSimilarity += similarity;
+            }
+
+            return totalSimilarity / directions.length;
+        }
+
+        function analyzeDirectionalTexture(data1, data2, width, height, direction) {
+            let pattern1 = 0, pattern2 = 0;
+            let count = 0;
+
+            for (let y = 1; y < height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    const idx = (y * width + x) * 4;
+                    const nextX = x + direction.dx;
+                    const nextY = y + direction.dy;
+
+                    if (nextX >= 0 && nextX < width && nextY >= 0 && nextY < height) {
+                        const nextIdx = (nextY * width + nextX) * 4;
+                        
+                        pattern1 += Math.abs(data1[idx] - data1[nextIdx]);
+                        pattern2 += Math.abs(data2[idx] - data2[nextIdx]);
+                        count++;
+                    }
+                }
+            }
+
+            if (count === 0) return 100;
+
+            const avgPattern1 = pattern1 / count;
+            const avgPattern2 = pattern2 / count;
+            const similarity = 1 - Math.abs(avgPattern1 - avgPattern2) / Math.max(avgPattern1, avgPattern2, 1);
+            
+            return Math.max(0, Math.min(100, similarity * 100));
+        }
+
+        function analyzeGradientConsistency(canvas1, canvas2) {
+            const data1 = canvas1.getContext('2d').getImageData(0, 0, canvas1.width, canvas1.height).data;
+            const data2 = canvas2.getContext('2d').getImageData(0, 0, canvas2.width, canvas2.height).data;
+
+            let gradientSim = 0;
+            let count = 0;
+            const width = canvas1.width;
+
+            for (let y = 1; y < canvas1.height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    const idx = (y * width + x) * 4;
+                    
+                    // Calculate gradient magnitude for both images
+                    const gx1 = data1[idx + 4] - data1[idx - 4];
+                    const gy1 = data1[idx + width * 4] - data1[idx - width * 4];
+                    const mag1 = Math.sqrt(gx1 * gx1 + gy1 * gy1);
+
+                    const gx2 = data2[idx + 4] - data2[idx - 4];
+                    const gy2 = data2[idx + width * 4] - data2[idx - width * 4];
+                    const mag2 = Math.sqrt(gx2 * gx2 + gy2 * gy2);
+
+                    // Calculate similarity
+                    const maxMag = Math.max(mag1, mag2, 1);
+                    const similarity = 1 - Math.abs(mag1 - mag2) / maxMag;
+                    gradientSim += similarity;
+                    count++;
+                }
+            }
+
+            return count > 0 ? (gradientSim / count) * 100 : 0;
+        }
+
+        function analyzeStructuralSimilarity(canvas1, canvas2) {
+            // Simplified SSIM-like analysis
+            const data1 = canvas1.getContext('2d').getImageData(0, 0, canvas1.width, canvas1.height).data;
+            const data2 = canvas2.getContext('2d').getImageData(0, 0, canvas2.width, canvas2.height).data;
+
+            let mean1 = 0, mean2 = 0;
+            let count = data1.length / 4;
+
+            // Calculate means
+            for (let i = 0; i < data1.length; i += 4) {
+                mean1 += data1[i];
+                mean2 += data2[i];
+            }
+            mean1 /= count;
+            mean2 /= count;
+
+            // Calculate variances and covariance
+            let var1 = 0, var2 = 0, cov = 0;
+            for (let i = 0; i < data1.length; i += 4) {
+                const diff1 = data1[i] - mean1;
+                const diff2 = data2[i] - mean2;
+                var1 += diff1 * diff1;
+                var2 += diff2 * diff2;
+                cov += diff1 * diff2;
+            }
+            var1 /= count;
+            var2 /= count;
+            cov /= count;
+
+            // SSIM-like formula
+            const c1 = 0.01 * 255 * 0.01 * 255;
+            const c2 = 0.03 * 255 * 0.03 * 255;
+
+            const ssim = ((2 * mean1 * mean2 + c1) * (2 * cov + c2)) /
+                        ((mean1 * mean1 + mean2 * mean2 + c1) * (var1 + var2 + c2));
+
+            return Math.max(0, Math.min(100, ssim * 100));
+        }
+
+        async function performAIAnalysis(imageFile, fullAnalysis = false) {
+            try {
+                // Show live AI analysis
+                const liveAnalysis = document.getElementById('liveAIAnalysis');
+                const aiContent = document.getElementById('aiAnalysisContent');
+                liveAnalysis.classList.remove('hidden');
+
+                // Register handler for AI response
+                window.Poe.registerHandler("forgery-analysis", (result, context) => {
+                    const msg = result.responses[0];
+                    
+                    if (msg.status === "error") {
+                        aiContent.textContent = "خطأ في التحليل: " + msg.statusText;
+                    } else if (msg.status === "incomplete") {
+                        aiContent.textContent = msg.content;
+                    } else if (msg.status === "complete") {
+                        aiContent.textContent = msg.content;
+                        // Store the complete analysis
+                        context.resolve(msg.content);
+                    }
+                });
+
+                // Create promise to wait for AI analysis
+                const aiPromise = new Promise((resolve, reject) => {
+                    const prompt = fullAnalysis ? 
+                        "@Claude-Sonnet-4 قم بتحليل هذه الصورة للكشف عن أي علامات تزوير أو تلاعب. ركز على: 1) جودة الطباعة والخطوط 2) التناسق في الألوان والإضاءة 3) علامات التحرير الرقمي 4) أي تشوهات أو عدم تطابق 5) التقييم الإجمالي لأصالة المستند. قدم تحليلاً مفصلاً باللغة العربية مع درجة الثقة من 0-100." :
+                        "@Claude-Sonnet-4 حلل هذه الصورة للكشف عن التزوير. أعط تقييماً سريعاً باللغة العربية مع درجة الثقة.";
+
+                    window.Poe.sendUserMessage(prompt, {
+                        attachments: [imageFile],
+                        handler: "forgery-analysis",
+                        stream: true,
+                        openChat: false,
+                        handlerContext: { resolve, reject }
+                    });
+
+                    // Timeout after 90 seconds
+                    setTimeout(() => {
+                        reject(new Error("انتهت مهلة التحليل"));
+                    }, 90000);
+                });
+
+                const analysisText = await aiPromise;
+                
+                // Extract confidence score from AI response
+                const scoreMatch = analysisText.match(/(\d+)%|\b(\d+)\s*من\s*100\b|\b(\d+)\/100\b/);
+                const extractedScore = scoreMatch ? parseInt(scoreMatch[1] || scoreMatch[2] || scoreMatch[3]) : null;
+
+                return {
+                    text: analysisText,
+                    score: extractedScore,
+                    fullAnalysis: fullAnalysis
+                };
+
+            } catch (error) {
+                console.error('AI Analysis Error:', error);
+                return {
+                    text: "لم يتمكن من إجراء التحليل بالذكاء الاصطناعي: " + error.message,
+                    score: null,
+                    error: true
+                };
+            }
+        }
+
+        async function performAIComparison(originalFile, suspectFile) {
+            try {
+                const liveAnalysis = document.getElementById('liveAIAnalysis');
+                const aiContent = document.getElementById('aiAnalysisContent');
+                liveAnalysis.classList.remove('hidden');
+
+                window.Poe.registerHandler("comparison-analysis", (result, context) => {
+                    const msg = result.responses[0];
+                    
+                    if (msg.status === "error") {
+                        aiContent.textContent = "خطأ في التحليل: " + msg.statusText;
+                    } else if (msg.status === "incomplete") {
+                        aiContent.textContent = msg.content;
+                    } else if (msg.status === "complete") {
+                        aiContent.textContent = msg.content;
+                        context.resolve(msg.content);
+                    }
+                });
+
+                const aiPromise = new Promise((resolve, reject) => {
+                    const prompt = "@Claude-Sonnet-4 قارن بين هاتين الصورتين للكشف عن أي اختلافات أو علامات تزوير. الصورة الأولى هي المرجع الأصلي والثانية مشكوك فيها. حلل: 1) الاختلافات في التفاصيل 2) جودة الطباعة 3) الألوان والإضاءة 4) أي علامات تحرير. قدم تحليلاً مفصلاً باللغة العربية مع درجة الثقة.";
+
+                    window.Poe.sendUserMessage(prompt, {
+                        attachments: [originalFile, suspectFile],
+                        handler: "comparison-analysis",
+                        stream: true,
+                        openChat: false,
+                        handlerContext: { resolve, reject }
+                    });
+
+                    setTimeout(() => {
+                        reject(new Error("انتهت مهلة التحليل"));
+                    }, 90000);
+                });
+
+                const analysisText = await aiPromise;
+                const scoreMatch = analysisText.match(/(\d+)%|\b(\d+)\s*من\s*100\b|\b(\d+)\/100\b/);
+                const extractedScore = scoreMatch ? parseInt(scoreMatch[1] || scoreMatch[2] || scoreMatch[3]) : null;
+
+                return {
+                    text: analysisText,
+                    score: extractedScore,
+                    comparison: true
+                };
+
+            } catch (error) {
+                console.error('AI Comparison Error:', error);
+                return {
+                    text: "لم يتمكن من إجراء المقارنة بالذكاء الاصطناعي: " + error.message,
+                    score: null,
+                    error: true
+                };
+            }
+        }
+
+        function combineResults(results, speed) {
+            const { metrics, images, aiAnalysis } = results;
+            
+            // Calculate weighted score based on available metrics
+            const weights = {
+                fast: { texture: 0.4, color: 0.4, pixel: 0.2 },
+                balanced: { texture: 0.25, frequency: 0.2, color: 0.25, edge: 0.15, pixel: 0.15 },
+                thorough: { texture: 0.2, frequency: 0.15, color: 0.2, noise: 0.1, edge: 0.15, pixel: 0.1, gradient: 0.05, structure: 0.05 }
+            };
+
+            const speedWeights = weights[speed] || weights.balanced;
+            let score = 0;
+            let totalWeight = 0;
+
+            Object.entries(metrics).forEach(([metric, value]) => {
+                const weight = speedWeights[metric] || 0;
+                score += value * weight;
+                totalWeight += weight;
+            });
+
+            if (totalWeight > 0) {
+                score = score / totalWeight;
+            }
+
+            // Incorporate AI score if available
+            if (aiAnalysis && aiAnalysis.score) {
+                score = (score * 0.7) + (aiAnalysis.score * 0.3);
+            }
+
+            return {
+                score: Math.max(0, Math.min(100, score)),
+                metrics: metrics,
+                images: images,
+                aiAnalysis: aiAnalysis,
+                analysisSpeed: speed
+            };
+        }
+
+        function updateProgress(percentage, text) {
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            progressBar.style.width = percentage + '%';
+            progressText.textContent = `${percentage}% - ${text}`;
+        }
+
+        async function loadImageToCanvas(file) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                    resolve(canvas);
+                };
+                img.onerror = reject;
+                img.src = URL.createObjectURL(file);
+            });
+        }
+
+        function splitCanvas(canvas) {
+            const width = canvas.width;
+            const height = canvas.height;
+            const halfWidth = Math.floor(width / 2);
+
+            const leftCanvas = document.createElement('canvas');
+            const rightCanvas = document.createElement('canvas');
+            
+            leftCanvas.width = halfWidth;
+            leftCanvas.height = height;
+            rightCanvas.width = halfWidth;
+            rightCanvas.height = height;
+
+            const leftCtx = leftCanvas.getContext('2d');
+            const rightCtx = rightCanvas.getContext('2d');
+
+            leftCtx.drawImage(canvas, 0, 0, halfWidth, height, 0, 0, halfWidth, height);
+            rightCtx.drawImage(canvas, halfWidth, 0, halfWidth, height, 0, 0, halfWidth, height);
+
+            return [leftCanvas, rightCanvas];
+        }
+
+        function convertToGrayscale(canvas) {
+            const newCanvas = document.createElement('canvas');
+            newCanvas.width = canvas.width;
+            newCanvas.height = canvas.height;
+            const ctx = newCanvas.getContext('2d');
+            
+            ctx.drawImage(canvas, 0, 0);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+
+            for (let i = 0; i < data.length; i += 4) {
+                const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+                data[i] = gray;
+                data[i + 1] = gray;
+                data[i + 2] = gray;
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+            return newCanvas;
+        }
+
+        function analyzeGaborTexture(canvas1, canvas2) {
+            const data1 = canvas1.getContext('2d').getImageData(0, 0, canvas1.width, canvas1.height).data;
+            const data2 = canvas2.getContext('2d').getImageData(0, 0, canvas2.width, canvas2.height).data;
+
+            let textureScore1 = 0, textureScore2 = 0;
+            const step = 4;
+
+            for (let i = step; i < data1.length - step; i += 4) {
+                const current1 = data1[i];
+                const next1 = data1[i + step];
+                const prev1 = data1[i - step];
+                textureScore1 += Math.abs(current1 - next1) + Math.abs(current1 - prev1);
+
+                const current2 = data2[i];
+                const next2 = data2[i + step];
+                const prev2 = data2[i - step];
+                textureScore2 += Math.abs(current2 - next2) + Math.abs(current2 - prev2);
+            }
+
+            const similarity = 1 - Math.abs(textureScore1 - textureScore2) / Math.max(textureScore1, textureScore2, 1);
+            return Math.max(0, Math.min(100, similarity * 100));
+        }
+
+        function analyzeFrequency(canvas1, canvas2) {
+            const data1 = canvas1.getContext('2d').getImageData(0, 0, canvas1.width, canvas1.height).data;
+            const data2 = canvas2.getContext('2d').getImageData(0, 0, canvas2.width, canvas2.height).data;
+
+            let freq1 = 0, freq2 = 0;
+            const width = canvas1.width;
+
+            for (let y = 1; y < canvas1.height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    const idx = (y * width + x) * 4;
+                    
+                    const gx1 = data1[idx + 4] - data1[idx - 4];
+                    const gy1 = data1[idx + width * 4] - data1[idx - width * 4];
+                    freq1 += Math.sqrt(gx1 * gx1 + gy1 * gy1);
+
+                    const gx2 = data2[idx + 4] - data2[idx - 4];
+                    const gy2 = data2[idx + width * 4] - data2[idx - width * 4];
+                    freq2 += Math.sqrt(gx2 * gx2 + gy2 * gy2);
+                }
+            }
+
+            const similarity = 1 - Math.abs(freq1 - freq2) / Math.max(freq1, freq2, 1);
+            return Math.max(0, Math.min(100, similarity * 100));
+        }
+
+        function analyzeColorSimilarity(canvas1, canvas2) {
+            const data1 = canvas1.getContext('2d').getImageData(0, 0, canvas1.width, canvas1.height).data;
+            const data2 = canvas2.getContext('2d').getImageData(0, 0, canvas2.width, canvas2.height).data;
+
+            let totalDiff = 0;
+            for (let i = 0; i < data1.length; i += 4) {
+                const rDiff = Math.abs(data1[i] - data2[i]);
+                const gDiff = Math.abs(data1[i + 1] - data2[i + 1]);
+                const bDiff = Math.abs(data1[i + 2] - data2[i + 2]);
+                totalDiff += (rDiff + gDiff + bDiff) / 3;
+            }
+
+            const avgDiff = totalDiff / (data1.length / 4);
+            const similarity = Math.max(0, 100 - (avgDiff / 255) * 100);
+            return similarity;
+        }
+
+        function analyzeNoise(canvas1, canvas2) {
+            const data1 = canvas1.getContext('2d').getImageData(0, 0, canvas1.width, canvas1.height).data;
+            const data2 = canvas2.getContext('2d').getImageData(0, 0, canvas2.width, canvas2.height).data;
+
+            let noise1 = 0, noise2 = 0;
+            const width = canvas1.width;
+            const windowSize = 3;
+
+            for (let y = windowSize; y < canvas1.height - windowSize; y++) {
+                for (let x = windowSize; x < width - windowSize; x++) {
+                    let sum1 = 0, sum2 = 0, count = 0;
+
+                    for (let dy = -windowSize; dy <= windowSize; dy++) {
+                        for (let dx = -windowSize; dx <= windowSize; dx++) {
+                            const idx = ((y + dy) * width + (x + dx)) * 4;
+                            sum1 += data1[idx];
+                            sum2 += data2[idx];
+                            count++;
+                        }
+                    }
+
+                    const mean1 = sum1 / count;
+                    const mean2 = sum2 / count;
+
+                    let variance1 = 0, variance2 = 0;
+                    for (let dy = -windowSize; dy <= windowSize; dy++) {
+                        for (let dx = -windowSize; dx <= windowSize; dx++) {
+                            const idx = ((y + dy) * width + (x + dx)) * 4;
+                            variance1 += Math.pow(data1[idx] - mean1, 2);
+                            variance2 += Math.pow(data2[idx] - mean2, 2);
+                        }
+                    }
+
+                    noise1 += variance1 / count;
+                    noise2 += variance2 / count;
+                }
+            }
+
+            const similarity = 1 - Math.abs(noise1 - noise2) / Math.max(noise1, noise2, 1);
+            return Math.max(0, Math.min(100, similarity * 100));
+        }
+
+        function analyzeEdgeConsistency(canvas1, canvas2) {
+            const data1 = canvas1.getContext('2d').getImageData(0, 0, canvas1.width, canvas1.height).data;
+            const data2 = canvas2.getContext('2d').getImageData(0, 0, canvas2.width, canvas2.height).data;
+
+            const width = canvas1.width;
+            let edgeSum1 = 0, edgeSum2 = 0;
+
+            for (let y = 1; y < canvas1.height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    const idx = (y * width + x) * 4;
+
+                    const gx1 = -data1[idx - width * 4 - 4] + data1[idx - width * 4 + 4] +
+                               -2 * data1[idx - 4] + 2 * data1[idx + 4] +
+                               -data1[idx + width * 4 - 4] + data1[idx + width * 4 + 4];
+
+                    const gy1 = -data1[idx - width * 4 - 4] - 2 * data1[idx - width * 4] - data1[idx - width * 4 + 4] +
+                                data1[idx + width * 4 - 4] + 2 * data1[idx + width * 4] + data1[idx + width * 4 + 4];
+
+                    edgeSum1 += Math.sqrt(gx1 * gx1 + gy1 * gy1);
+
+                    const gx2 = -data2[idx - width * 4 - 4] + data2[idx - width * 4 + 4] +
+                               -2 * data2[idx - 4] + 2 * data2[idx + 4] +
+                               -data2[idx + width * 4 - 4] + data2[idx + width * 4 + 4];
+
+                    const gy2 = -data2[idx - width * 4 - 4] - 2 * data2[idx - width * 4] - data2[idx - width * 4 + 4] +
+                                data2[idx + width * 4 - 4] + 2 * data2[idx + width * 4] + data2[idx + width * 4 + 4];
+
+                    edgeSum2 += Math.sqrt(gx2 * gx2 + gy2 * gy2);
+                }
+            }
+
+            const similarity = 1 - Math.abs(edgeSum1 - edgeSum2) / Math.max(edgeSum1, edgeSum2, 1);
+            return Math.max(0, Math.min(100, similarity * 100));
+        }
+
+        function simplePixelDiff(canvas1, canvas2) {
+            const ctx1 = canvas1.getContext("2d");
+            const ctx2 = canvas2.getContext("2d");
+            const data1 = ctx1.getImageData(0, 0, canvas1.width, canvas1.height).data;
+            const data2 = ctx2.getImageData(0, 0, canvas2.width, canvas2.height).data;
+
+            let totalDiff = 0;
+            for (let i = 0; i < data1.length; i += 4) {
+                const gray1 = (data1[i] + data1[i + 1] + data1[i + 2]) / 3;
+                const gray2 = (data2[i] + data2[i + 1] + data2[i + 2]) / 3;
+                totalDiff += Math.abs(gray1 - gray2);
+            }
+
+            return totalDiff / (data1.length / 4);
+        }
+
+        function createDiffImage(canvas1, canvas2) {
+            const width = canvas1.width;
+            const height = canvas1.height;
+
+            const outputCanvas = document.createElement('canvas');
+            outputCanvas.width = width;
+            outputCanvas.height = height;
+
+            const ctx1 = canvas1.getContext('2d');
+            const ctx2 = canvas2.getContext('2d');
+            const outCtx = outputCanvas.getContext('2d');
+
+            const data1 = ctx1.getImageData(0, 0, width, height).data;
+            const data2 = ctx2.getImageData(0, 0, width, height).data;
+
+            const output = outCtx.createImageData(width, height);
+
+            for (let i = 0; i < data1.length; i += 4) {
+                const gray1 = (data1[i] + data1[i + 1] + data1[i + 2]) / 3;
+                const gray2 = (data2[i] + data2[i + 1] + data2[i + 2]) / 3;
+                const diff = Math.abs(gray1 - gray2);
+
+                if (diff > 30) {
+                    output.data[i] = 255;
+                    output.data[i + 1] = 0;
+                    output.data[i + 2] = 0;
+                    output.data[i + 3] = 255;
+                } else {
+                    const intensity = Math.min(255, gray1 + diff);
+                    output.data[i] = intensity;
+                    output.data[i + 1] = intensity;
+                    output.data[i + 2] = intensity;
+                    output.data[i + 3] = 255;
+                }
+            }
+
+            outCtx.putImageData(output, 0, 0);
+            return outputCanvas.toDataURL();
+        }
+
+        function createHeatmap(canvas1, canvas2) {
+            const width = canvas1.width;
+            const height = canvas1.height;
+
+            const outputCanvas = document.createElement('canvas');
+            outputCanvas.width = width;
+            outputCanvas.height = height;
+
+            const ctx1 = canvas1.getContext('2d');
+            const ctx2 = canvas2.getContext('2d');
+            const outCtx = outputCanvas.getContext('2d');
+
+            const data1 = ctx1.getImageData(0, 0, width, height).data;
+            const data2 = ctx2.getImageData(0, 0, width, height).data;
+
+            const output = outCtx.createImageData(width, height);
+
+            for (let i = 0; i < data1.length; i += 4) {
+                const gray1 = (data1[i] + data1[i + 1] + data1[i + 2]) / 3;
+                const gray2 = (data2[i] + data2[i + 1] + data2[i + 2]) / 3;
+                const diff = Math.abs(gray1 - gray2) / 255;
+
+                if (diff < 0.2) {
+                    output.data[i] = 0;
+                    output.data[i + 1] = 0;
+                    output.data[i + 2] = 255;
+                } else if (diff < 0.5) {
+                    output.data[i] = 255 * diff * 2;
+                    output.data[i + 1] = 255;
+                    output.data[i + 2] = 0;
+                } else {
+                    output.data[i] = 255;
+                    output.data[i + 1] = 0;
+                    output.data[i + 2] = 0;
+                }
+                output.data[i + 3] = 200;
+            }
+
+            outCtx.putImageData(output, 0, 0);
+            return outputCanvas.toDataURL();
+        }
+
+        function displayResults(results) {
+            document.getElementById('progressSection').classList.add('hidden');
+            document.getElementById('resultSection').classList.remove('hidden');
+
+            const { score, metrics, images, aiAnalysis, mode } = results;
+
+            // Display overall score
+            const scoreDisplay = document.getElementById('scoreDisplay');
+            const scoreInterpretation = document.getElementById('scoreInterpretation');
+
+            let scoreClass, interpretation, icon;
+            if (score >= 75) {
+                scoreClass = 'result-excellent';
+                interpretation = '✅ المستند يبدو أصلياً وسليماً. لا توجد دلائل واضحة على التزوير.';
+                icon = 'fas fa-check-circle';
+            } else if (score >= 50) {
+                scoreClass = 'result-good';
+                interpretation = '⚠️ هناك بعض الاختلافات الطفيفة. يُنصح بالفحص اليدوي الإضافي.';
+                icon = 'fas fa-exclamation-triangle';
+            } else {
+                scoreClass = 'result-poor';
+                interpretation = '🚨 احتمال التزوير مرتفع! توجد اختلافات كبيرة تشير إلى تلاعب في المستند.';
+                icon = 'fas fa-times-circle';
+            }
+
+            scoreDisplay.className = `text-center p-6 rounded-lg text-white font-bold text-3xl ${scoreClass}`;
+            scoreDisplay.innerHTML = `
+                <i class="${icon} mr-3"></i>
+                ${score.toFixed(1)}%
+            `;
+
+            scoreInterpretation.className = `mt-4 p-4 rounded-lg border-r-4 ${score >= 75 ? 'bg-green-50 dark:bg-green-900/20 border-green-500' : score >= 50 ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-500' : 'bg-red-50 dark:bg-red-900/20 border-red-500'}`;
+            scoreInterpretation.innerHTML = interpretation;
+
+            // Display AI analysis if available
+            if (aiAnalysis && aiAnalysis.text && mode !== 'ai-only') {
+                const aiSection = document.getElementById('aiResultsSection');
+                const aiResults = document.getElementById('aiAnalysisResults');
+                aiSection.classList.remove('hidden');
+                
+                // Convert markdown to HTML if available
+                const htmlContent = typeof marked !== 'undefined' ? 
+                    marked.parse(aiAnalysis.text) : 
+                    `<pre class="whitespace-pre-wrap">${aiAnalysis.text}</pre>`;
+                
+                aiResults.innerHTML = htmlContent;
+            }
+
+            // Display detailed metrics (skip for AI-only mode)
+            if (mode !== 'ai-only' && Object.keys(metrics).length > 0) {
+                const metricsContainer = document.getElementById('detailedMetrics');
+                const metricLabels = {
+                    texture: { name: 'تحليل الملمس', icon: 'fas fa-texture' },
+                    frequency: { name: 'التحليل الترددي', icon: 'fas fa-wave-square' },
+                    color: { name: 'تحليل الألوان', icon: 'fas fa-palette' },
+                    noise: { name: 'كشف الضوضاء', icon: 'fas fa-volume-up' },
+                    edge: { name: 'تحليل الحواف', icon: 'fas fa-vector-square' },
+                    pixel: { name: 'مقارنة البكسلات', icon: 'fas fa-th' },
+                    gradient: { name: 'تحليل التدرج', icon: 'fas fa-chart-line' },
+                    structure: { name: 'التحليل الهيكلي', icon: 'fas fa-cube' }
+                };
+
+                metricsContainer.innerHTML = Object.entries(metrics).map(([key, value]) => {
+                    const label = metricLabels[key] || { name: key, icon: 'fas fa-cog' };
+                    const percentage = value.toFixed(1);
+                    const colorClass = value >= 75 ? 'text-green-600' : value >= 50 ? 'text-yellow-600' : 'text-red-600';
+                    
+                    return `
+                        <div class="metric-card bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="flex items-center">
+                                    <i class="${label.icon} text-primary mr-2"></i>
+                                    <span class="font-medium">${label.name}</span>
+                                </div>
+                                <span class="font-bold ${colorClass}">${percentage}%</span>
+                            </div>
+                            <div class="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2">
+                                <div class="bg-gradient-to-r from-primary to-purple-600 h-2 rounded-full transition-all duration-1000" style="width: ${value}%"></div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            // Display visual comparison (skip for AI-only mode)
+            if (mode !== 'ai-only' && images && Object.keys(images).length > 0) {
+                const visualComparison = document.getElementById('visualComparison');
+                const imagesHtml = [];
+
+                if (images.original) {
+                    imagesHtml.push(`
+                        <div class="image-preview">
+                            <img src="${images.original}" alt="المنطقة الأصلية">
+                            <div class="image-label">${currentMode === 'compare' ? 'الصورة الأصلية' : 'المنطقة الأولى (مرجع)'}</div>
+                        </div>
+                    `);
+                }
+
+                if (images.suspect) {
+                    imagesHtml.push(`
+                        <div class="image-preview">
+                            <img src="${images.suspect}" alt="المنطقة المشكوك فيها">
+                            <div class="image-label">${currentMode === 'compare' ? 'الصورة المشكوك فيها' : 'المنطقة الثانية (للمقارنة)'}</div>
+                        </div>
+                    `);
+                }
+
+                if (images.diff) {
+                    imagesHtml.push(`
+                        <div class="image-preview">
+                            <img src="${images.diff}" alt="صورة الفروقات">
+                            <div class="image-label">الفروقات (أحمر = اختلاف)</div>
+                        </div>
+                    `);
+                }
+
+                if (images.heatmap) {
+                    imagesHtml.push(`
+                        <div class="image-preview">
+                            <img src="${images.heatmap}" alt="خريطة حرارية">
+                            <div class="image-label">الخريطة الحرارية</div>
+                        </div>
+                    `);
+                }
+
+                visualComparison.innerHTML = `
+                    <div class="comparison-images">
+                        ${imagesHtml.join('')}
+                    </div>
+                    <div class="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
+                        <h4 class="font-bold text-blue-800 dark:text-blue-200 mb-2 flex items-center">
+                            <i class="fas fa-info-circle mr-2"></i>
+                            تفسير النتائج البصرية
+                        </h4>
+                        <ul class="text-blue-700 dark:text-blue-300 text-sm space-y-1">
+                            <li>• <strong>المناطق الحمراء:</strong> تشير إلى اختلافات واضحة بين المنطقتين</li>
+                            <li>• <strong>المناطق الرمادية:</strong> تشير إلى تطابق أو اختلافات طفيفة</li>
+                            <li>• <strong>كثرة المناطق الحمراء:</strong> قد تدل على تلاعب أو تزوير</li>
+                            <li>• <strong>الاختلافات الطبيعية:</strong> قد تنتج عن اختلاف المحتوى الطبيعي للمستند</li>
+                        </ul>
+                    </div>
+                `;
+            } else if (mode === 'ai-only') {
+                // For AI-only mode, show the analysis text as the main content
+                const visualComparison = document.getElementById('visualComparison');
+                const htmlContent = typeof marked !== 'undefined' ? 
+                    marked.parse(aiAnalysis.text) : 
+                    `<div class="whitespace-pre-wrap text-lg">${aiAnalysis.text}</div>`;
+                
+                visualComparison.innerHTML = `
+                    <div class="ai-analysis rounded-lg p-6">
+                        <h3 class="text-xl font-bold text-green-800 dark:text-green-200 mb-4 flex items-center">
+                            <i class="fas fa-robot mr-3"></i>
+                            تحليل شامل بالذكاء الاصطناعي
+                        </h3>
+                        <div class="prose dark:prose-invert max-w-none">
+                            ${htmlContent}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Scroll to results
+            document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function showCustomAlert(message) {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+            modal.innerHTML = `
+                <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg max-w-sm w-full mx-4">
+                    <div class="flex items-center mb-4">
+                        <i class="fas fa-exclamation-triangle text-yellow-500 text-xl mr-3"></i>
+                        <h3 class="font-bold text-lg">تنبيه</h3>
+                    </div>
+                    <p class="text-gray-700 dark:text-gray-300 mb-4">${message}</p>
+                    <div class="flex justify-end">
+                        <button class="px-4 py-2 bg-primary text-white hover:bg-purple-600 rounded transition-colors" onclick="this.closest('.fixed').remove()">حسناً</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+    </script>
+</body>
+</html>
