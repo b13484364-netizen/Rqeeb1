@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام كشف التزوير - المستندات والعملات</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/opencv.js@4.5.2/opencv.js" onload="onOpenCvReady();" async></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/4.5.0/fabric.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap');
+        
+        * {
+            font-family: 'Tajawal', sans-serif;
+        }
+        
+        .result-bar {
+            transition: width 0.5s ease-in-out;
+        }
+        
+        .comparison-canvas {
+            border: 2px dashed #4F46E5;
+            border-radius: 8px;
+        }
+        
+        .processing-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #4F46E5;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .feature-highlight {
+            border: 2px solid #10B981;
+            border-radius: 4px;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <!-- شريط التحميل -->
+    <div class="processing-overlay" id="processingOverlay">
+        <div class="bg-white p-8 rounded-lg shadow-xl flex flex-col items-center">
+            <div class="spinner"></div>
+            <p class="mt-4 text-gray-700 font-medium">جاري معالجة الصور وتحليلها...</p>
+        </div>
+    </div>
+
+    <div class="container mx-auto px-4 py-8">
+        <!-- العنوان -->
+        <header class="text-center mb-12">
+            <h1 class="text-3xl md:text-4xl font-bold text-indigo-800 mb-2">نظام كشف تزوير المستندات والعملات</h1>
+            <p class="text-gray-600 max-w-3xl mx-auto">
+                تطبيق متقدم للكشف عن المستندات والعملات المزورة باستخدام تقنيات الذكاء الاصطناعي ومعالجة الصور
+            </p>
+        </header>
+
+        <!-- منطقة تحميل الصور -->
+        <div class="grid md:grid-cols-2 gap-8 mb-12">
+            <!-- الصورة الأصلية -->
+            <div class="bg-white p-6 rounded-xl shadow-md">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
+                    <i class="fas fa-file-alt ml-2 text-green-500"></i>
+                    المستند/العملة الأصلية
+                </h2>
+                <div class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center h-64 flex items-center justify-center" id="originalDropArea">
+                    <div class="text-gray-500">
+                        <i class="fas fa-cloud-upload-alt text-4xl mb-2"></i>
+                        <p>اسحب الصورة هنا أو <label for="originalInput" class="text-indigo-600 cursor-pointer">اختر ملف</label></p>
+                        <input type="file" id="originalInput" accept="image/*" class="hidden" />
+                    </div>
+                </div>
+                <canvas id="originalCanvas" class="comparison-canvas w-full mt-4" style="display: none;"></canvas>
+            </div>
+
+            <!-- الصورة للمقارنة -->
+            <div class="bg-white p-6 rounded-xl shadow-md">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
+                    <i class="fas fa-search ml-2 text-blue-500"></i>
+                    المستند/العملة للمقارنة
+                </h2>
+                <div class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center h-64 flex items-center justify-center" id="comparisonDropArea">
+                    <div class="text-gray-500">
+                        <i class="fas fa-cloud-upload-alt text-4xl mb-2"></i>
+                        <p>اسحب الصورة هنا أو <label for="comparisonInput" class="text-indigo-600 cursor-pointer">اختر ملف</label></p>
+                        <input type="file" id="comparisonInput" accept="image/*" class="hidden" />
+                    </div>
+                </div>
+                <canvas id="comparisonCanvas" class="comparison-canvas w-full mt-4" style="display: none;"></canvas>
+            </div>
+        </div>
+
+        <!-- عناصر التحكم -->
+        <div class="bg-white p-6 rounded-xl shadow-md mb-12">
+            <h2 class="text-xl font-semibold text-gray-800 mb-6">إعدادات التحليل</h2>
+            <div class="grid md:grid-cols-3 gap-6">
+                <div>
+                    <label class="block text-gray-700 mb-2">نوع التحليل</label>
+                    <select id="analysisType" class="w-full p-2 border border-gray-300 rounded-md">
+                        <option value="comprehensive">تحليل شامل (مستندات وعملات)</option>
+                        <option value="documents">المستندات فقط</option>
+                        <option value="currency">العملات فقط</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-gray-700 mb-2">مستوى الدقة</label>
+                    <select id="precisionLevel" class="w-full p-2 border border-gray-300 rounded-md">
+                        <option value="high">عالي (أبطأ)</option>
+                        <option value="medium" selected>متوسط</option>
+                        <option value="low">منخفض (أسرع)</option>
+                    </select>
+                </div>
+                <div class="flex items-end">
+                    <button id="analyzeBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-md flex items-center justify-center">
+                        <i class="fas fa-search mr-2"></i>
+                        بدء التحليل
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- النتائج -->
+        <div class="bg-white p-6 rounded-xl shadow-md">
+            <h2 class="text-xl font-semibold text-gray-800 mb-6">نتائج التحليل</h2>
+            
+            <div id="resultsContainer" class="hidden">
+                <!-- نتيجة المطابقة -->
+                <div class="mb-8">
+                    <h3 class="text-lg font-medium text-gray-700 mb-4">نسبة المطابقة</h3>
+                    <div class="w-full bg-gray-200 rounded-full h-4">
+                        <div id="matchPercentageBar" class="result-bar h-4 rounded-full bg-indigo-600 text-center text-white text-xs leading-none py-1" style="width: 0%">0%</div>
+                    </div>
+                    <div class="flex justify-between mt-2">
+                        <span class="text-sm text-gray-500">0%</span>
+                        <span id="matchPercentageText" class="text-sm font-medium text-indigo-600">0%</span>
+                        <span class="text-sm text-gray-500">100%</span>
+                    </div>
+                </div>
+
+                <!-- التفاصيل -->
+                <div class="grid md:grid-cols-2 gap-6 mb-8">
+                    <div>
+                        <h3 class="text-lg font-medium text-gray-700 mb-4">تفاصيل التحليل</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <span class="text-gray-600">مطابقة نوع الورق/النسيج</span>
+                                    <span id="paperMatch" class="font-medium">-</span>
+                                </div>
+                                <div class="w-full bg-gray-200 rounded-full h-2">
+                                    <div id="paperMatchBar" class="h-2 rounded-full bg-green-500" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <span class="text-gray-600">مطابقة الحبر والطباعة</span>
+                                    <span id="inkMatch" class="font-medium">-</span>
+                                </div>
+                                <div class="w-full bg-gray-200 rounded-full h-2">
+                                    <div id="inkMatchBar" class="h-2 rounded-full bg-blue-500" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between mb-1">
+                                    <span class="text-gray-600">مطابقة الأشكال الهندسية</span>
+                                    <span id="shapesMatch" class="font-medium">-</span>
+                                </div>
+                                <div class="w-full bg-gray-200 rounded-full h-2">
+                                    <div id="shapesMatchBar" class="h-2 rounded-full bg-purple-500" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h3 class="text-lg font-medium text-gray-700 mb-4">النتيجة النهائية</h3>
+                        <div id="finalResult" class="p-6 rounded-lg border text-center">
+                            <i id="resultIcon" class="fas fa-question-circle text-5xl text-gray-400 mb-4"></i>
+                            <h4 id="resultTitle" class="text-xl font-bold mb-2">بانتظار التحليل</h4>
+                            <p id="resultDescription" class="text-gray-600">سيظهر هنا نتيجة التحليل بعد معالجة الصور</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- المناطق المشبوهة -->
+                <div>
+                    <h3 class="text-lg font-medium text-gray-700 mb-4">المناطق المشبوهة</h3>
+                    <div id="suspiciousAreas" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <!-- سيتم إضافة المناطق المشبوهة ديناميكيًا -->
+                    </div>
+                </div>
+            </div>
+
+            <div id="noResults" class="text-center py-12">
+                <i class="fas fa-microscope text-5xl text-gray-300 mb-4"></i>
+                <p class="text-gray-500">قم بتحميل الصور واضغط على "بدء التحليل" لرؤية النتائج</p>
+            </div>
+        </div>
+    </div>
+
+    <footer class="mt-12 py-6 bg-gray-800 text-white text-center">
+        <p>© 2023 نظام كشف تزوير المستندات والعملات. جميع الحقوق محفوظة.</p>
+    </footer>
+
+    <script>
+        // حالة التطبيق
+        let state = {
+            originalImage: null,
+            comparisonImage: null,
+            opencvReady: false,
+            analysisInProgress: false
+        };
+
+        // عناصر DOM
+        const originalDropArea = document.getElementById('originalDropArea');
+        const comparisonDropArea = document.getElementById('comparisonDropArea');
+        const originalInput = document.getElementById('originalInput');
+        const comparisonInput = document.getElementById('comparisonInput');
+        const originalCanvas = document.getElementById('originalCanvas');
+        const comparisonCanvas = document.getElementById('comparisonCanvas');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const processingOverlay = document.getElementById('processingOverlay');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const noResults = document.getElementById('noResults');
+        
+        // عناصر النتائج
+        const matchPercentageBar = document.getElementById('matchPercentageBar');
+        const matchPercentageText = document.getElementById('matchPercentageText');
+        const paperMatch = document.getElementById('paperMatch');
+        const paperMatchBar = document.getElementById('paperMatchBar');
+        const inkMatch = document.getElementById('inkMatch');
+        const inkMatchBar = document.getElementById('inkMatchBar');
+        const shapesMatch = document.getElementById('shapesMatch');
+        const shapesMatchBar = document.getElementById('shapesMatchBar');
+        const finalResult = document.getElementById('finalResult');
+        const resultIcon = document.getElementById('resultIcon');
+        const resultTitle = document.getElementById('resultTitle');
+        const resultDescription = document.getElementById('resultDescription');
+        const suspiciousAreas = document.getElementById('suspiciousAreas');
+
+        // تهيئة سحب وإسقاط الملفات
+        function initDropAreas() {
+            // لمنع السلوك الافتراضي لسحب الملفات
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                [originalDropArea, comparisonDropArea].forEach(area => {
+                    area.addEventListener(eventName, preventDefaults, false);
+                });
+            });
+            
+            // إظهار تأثير السحب
+            ['dragenter', 'dragover'].forEach(eventName => {
+                [originalDropArea, comparisonDropArea].forEach(area => {
+                    area.addEventListener(eventName, highlight, false);
+                });
+            });
+            
+            ['dragleave', 'drop'].forEach(eventName => {
+                [originalDropArea, comparisonDropArea].forEach(area => {
+                    area.addEventListener(eventName, unhighlight, false);
+                });
+            });
+            
+            // معالجة الملفات المسقطة
+            [originalDropArea, comparisonDropArea].forEach(area => {
+                area.addEventListener('drop', handleDrop, false);
+            });
+            
+            // معالجة اختيار الملفات من خلال الزر
+            originalInput.addEventListener('change', handleFileSelect);
+            comparisonInput.addEventListener('change', handleFileSelect);
+        }
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        function highlight(e) {
+            e.currentTarget.classList.add('bg-blue-50');
+            e.currentTarget.classList.add('border-blue-400');
+        }
+
+        function unhighlight(e) {
+            e.currentTarget.classList.remove('bg-blue-50');
+            e.currentTarget.classList.remove('border-blue-400');
+        }
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            const dropArea = e.currentTarget;
+            
+            if (files.length > 0) {
+                if (dropArea.id === 'originalDropArea') {
+                    handleFiles(files, 'original');
+                } else {
+                    handleFiles(files, 'comparison');
+                }
+            }
+        }
+
+        function handleFileSelect(e) {
+            const files = e.target.files;
+            const input = e.target;
+            
+            if (files.length > 0) {
+                if (input.id === 'originalInput') {
+                    handleFiles(files, 'original');
+                } else {
+                    handleFiles(files, 'comparison');
+                }
+            }
+        }
+
+        function handleFiles(files, type) {
+            if (files.length > 0) {
+                const file = files[0];
+                if (file.type.match('image.*')) {
+                    const reader = new FileReader();
+                    
+                    reader.onload = function(e) {
+                        const image = new Image();
+                        image.src = e.target.result;
+                        
+                        image.onload = function() {
+                            if (type === 'original') {
+                                state.originalImage = image;
+                                displayImage(image, originalCanvas, originalDropArea);
+                            } else {
+                                state.comparisonImage = image;
+                                displayImage(image, comparisonCanvas, comparisonDropArea);
+                            }
+                            
+                            // تمكين زر التحليل إذا كانت الصور جاهزة
+                            if (state.originalImage && state.comparisonImage) {
+                                analyzeBtn.disabled = false;
+                                analyzeBtn.classList.remove('opacity-50');
+                                analyzeBtn.classList.add('hover:bg-indigo-700');
+                            }
+                        };
+                    };
+                    
+                    reader.readAsDataURL(file);
+                }
+            }
+        }
+
+        function displayImage(image, canvas, dropArea) {
+            // إخفاء منطقة السحب وإظهار Canvas
+            dropArea.style.display = 'none';
+            canvas.style.display = 'block';
+            
+            // ضبط أبعاد Canvas وعرض الصورة
+            const maxWidth = 500;
+            const maxHeight = 400;
+            let width = image.width;
+            let height = image.height;
+            
+            if (width > maxWidth) {
+                height = (maxWidth / width) * height;
+                width = maxWidth;
+            }
+            
+            if (height > maxHeight) {
+                width = (maxHeight / height) * width;
+                height = maxHeight;
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(image, 0, 0, width, height);
+        }
+
+        // معالجة تحليل الصور
+        analyzeBtn.addEventListener('click', function() {
+            if (state.analysisInProgress || !state.opencvReady) return;
+            
+            if (state.originalImage && state.comparisonImage) {
+                startAnalysis();
+            } else {
+                alert('يرجى تحميل الصورتين أولاً');
+            }
+        });
+
+        function startAnalysis() {
+            state.analysisInProgress = true;
+            processingOverlay.style.display = 'flex';
+            
+            // محاكاة عملية التحليل (سيتم استبدالها بالتحليل الحقيقي)
+            setTimeout(() => {
+                simulateAnalysisResults();
+                processingOverlay.style.display = 'none';
+                state.analysisInProgress = false;
+            }, 3000);
+        }
+
+        function simulateAnalysisResults() {
+            // هذه مجرد محاكاة للنتائج، في التطبيق الحقيقي سيتم استبدالها بتحليل OpenCV
+            const totalMatch = Math.floor(Math.random() * 100);
+            
+            // تحديث واجهة النتائج
+            noResults.style.display = 'none';
+            resultsContainer.style.display = 'block';
+            
+            // تحديث شريط النسبة المئوية
+            matchPercentageBar.style.width = `${totalMatch}%`;
+            matchPercentageBar.textContent = `${totalMatch}%`;
+            matchPercentageText.textContent = `${totalMatch}%`;
+            
+            // تحديث تفاصيل التحليل
+            const paperMatchValue = Math.min(100, totalMatch + Math.floor(Math.random() * 20));
+            const inkMatchValue = Math.min(100, totalMatch + Math.floor(Math.random() * 15));
+            const shapesMatchValue = Math.min(100, totalMatch + Math.floor(Math.random() * 10));
+            
+            paperMatch.textContent = `${paperMatchValue}%`;
+            paperMatchBar.style.width = `${paperMatchValue}%`;
+            
+            inkMatch.textContent = `${inkMatchValue}%`;
+            inkMatchBar.style.width = `${inkMatchValue}%`;
+            
+            shapesMatch.textContent = `${shapesMatchValue}%`;
+            shapesMatchBar.style.width = `${shapesMatchValue}%`;
+            
+            // تحديث النتيجة النهائية
+            if (totalMatch >= 90) {
+                resultIcon.className = 'fas fa-check-circle text-5xl text-green-500 mb-4';
+                resultTitle.textContent = 'أصلي - متطابق';
+                resultTitle.className = 'text-xl font-bold mb-2 text-green-600';
+                resultDescription.textContent = 'المستند/العملة أصلي ومطابق تمامًا للعينة الأصلية';
+                finalResult.classList.add('border-green-200', 'bg-green-50');
+            } else if (totalMatch >= 70) {
+                resultIcon.className = 'fas fa-exclamation-circle text-5xl text-yellow-500 mb-4';
+                resultTitle.textContent = 'محتمل الصحة';
+                resultTitle.className = 'text-xl font-bold mb-2 text-yellow-600';
+                resultDescription.textContent = 'يوجد بعض الاختلافات الطفيفة التي قد تكون بسبب ظروف التصوير';
+                finalResult.classList.add('border-yellow-200', 'bg-yellow-50');
+            } else {
+                resultIcon.className = 'fas fa-times-circle text-5xl text-red-500 mb-4';
+                resultTitle.textContent = 'مشبوه -很可能 مزور';
+                resultTitle.className = 'text-xl font-bold mb-2 text-red-600';
+                resultDescription.textContent = 'تم اكتشاف اختلافات كبيرة تشير إلى احتمال التزوير';
+                finalResult.classList.add('border-red-200', 'bg-red-50');
+            }
+            
+            // إضافة مناطق مشبوهة (محاكاة)
+            suspiciousAreas.innerHTML = '';
+            if (totalMatch < 90) {
+                const areas = [
+                    {title: 'اختلاف في نسيج الورق', confidence: 'عالية'},
+                    {title: 'تباين في لون الحبر', confidence: 'متوسطة'},
+                    {title: 'اختلاف في الحواف', confidence: 'منخفضة'}
+                ];
+                
+                areas.forEach(area => {
+                    const areaEl = document.createElement('div');
+                    areaEl.className = 'p-4 bg-gray-100 rounded-lg';
+                    areaEl.innerHTML = `
+                        <div class="flex items-center mb-2">
+                            <i class="fas fa-exclamation-triangle text-yellow-500 ml-2"></i>
+                            <h4 class="font-medium">${area.title}</h4>
+                        </div>
+                        <span class="text-sm text-gray-500">ثقة الكشف: ${area.confidence}</span>
+                    `;
+                    suspiciousAreas.appendChild(areaEl);
+                });
+            }
+        }
+
+        // تهيئة OpenCV
+        function onOpenCvReady() {
+            state.opencvReady = true;
+            console.log('OpenCV is ready');
+            
+            // تمكين زر التحليل إذا كانت الصور جاهزة
+            if (state.originalImage && state.comparisonImage) {
+                analyzeBtn.disabled = false;
+                analyzeBtn.classList.remove('opacity-50');
+            }
+        }
+
+        // بدء التطبيق
+        document.addEventListener('DOMContentLoaded', function() {
+            initDropAreas();
+            
+            // زر التحليل معطل حتى يتم تحميل الصور وOpenCV
+            analyzeBtn.disabled = true;
+            analyzeBtn.classList.add('opacity-50');
+            analyzeBtn.classList.remove('hover:bg-indigo-700');
+        });
+    </script>
+</body>
+</html>
